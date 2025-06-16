@@ -18,7 +18,7 @@ const calendar = google.calendar({ version: "v3", auth: oauth2Client });
 
 const TIME_ZONE = "America/Los_Angeles";
 
-// Function to parse date string (same as your original)
+// Function to parse date string
 const parseDateString = (dateStr) => {
   if (!dateStr || typeof dateStr !== "string") {
     return format(new Date(), "yyyy-MM-dd");
@@ -27,8 +27,7 @@ const parseDateString = (dateStr) => {
   dateStr = dateStr.trim().replace(/\s+/g, " ").toLowerCase();
 
   if (dateStr === "today") return format(new Date(), "yyyy-MM-dd");
-  if (dateStr === "tomorrow")
-    return format(addDays(new Date(), 1), "yyyy-MM-dd");
+  if (dateStr === "tomorrow") return format(addDays(new Date(), 1), "yyyy-MM-dd");
 
   const chronoParsed = chrono.parseDate(dateStr);
   if (chronoParsed && isValid(chronoParsed)) {
