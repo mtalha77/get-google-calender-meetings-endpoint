@@ -1,0 +1,18 @@
+{
+  "name": "get-calender-meeting",
+  "version": "1.0.0",
+  "main": "api/get-google-calender-meetings.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "chrono-node": "^2.8.3",
+    "date-fns": "^4.1.0",
+    "date-fns-tz": "^3.2.0",
+    "dotenv": "^16.5.0",
+    "googleapis": "^150.0.1"
+  }
+}
