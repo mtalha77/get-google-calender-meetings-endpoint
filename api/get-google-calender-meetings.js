@@ -1,7 +1,7 @@
 const { google } = require("googleapis");
 require("dotenv").config();
 const { format, isValid, startOfDay, endOfDay, addDays } = require("date-fns");
-const { zonedTimeToUtc, utcToZonedTime } = require("date-fns-tz");
+const dateFnsTz = require("date-fns-tz"); // Import the entire module
 const chrono = require("chrono-node");
 
 const oauth2Client = new google.auth.OAuth2(
@@ -42,9 +42,9 @@ const formatMeetingData = (event) => {
   const startDateTime = new Date(event.start.dateTime || event.start.date);
   const endDateTime = new Date(event.end.dateTime || event.end.date);
   
-  // Convert to Pacific Time for display
-  const pacificStartTime = utcToZonedTime(startDateTime, TIME_ZONE);
-  const pacificEndTime = utcToZonedTime(endDateTime, TIME_ZONE);
+  // Use the imported module directly
+  const pacificStartTime = dateFnsTz.utcToZonedTime(startDateTime, TIME_ZONE);
+  const pacificEndTime = dateFnsTz.utcToZonedTime(endDateTime, TIME_ZONE);
 
   return {
     id: event.id,
@@ -67,7 +67,6 @@ module.exports = async (req, res) => {
   }
 
   try {
-    // Support both GET (query params) and POST (body) methods
     const date = req.method === "GET" ? req.query.date : req.body.date;
     
     console.log("Requested date:", date);
@@ -88,13 +87,14 @@ module.exports = async (req, res) => {
       });
     }
 
-    // Create start and end of day in Pacific Time, then convert to UTC for API call
+    // Create start and end of day in Pacific Time
     const dateObj = new Date(parsedDate);
     const startOfDayPacific = startOfDay(dateObj);
     const endOfDayPacific = endOfDay(dateObj);
     
-    const startTimeUTC = zonedTimeToUtc(startOfDayPacific, TIME_ZONE);
-    const endTimeUTC = zonedTimeToUtc(endOfDayPacific, TIME_ZONE);
+    // Use the module directly
+    const startTimeUTC = dateFnsTz.zonedTimeToUtc(startOfDayPacific, TIME_ZONE);
+    const endTimeUTC = dateFnsTz.zonedTimeToUtc(endOfDayPacific, TIME_ZONE);
 
     console.log("Date range UTC:", {
       start: startTimeUTC.toISOString(),
@@ -108,7 +108,7 @@ module.exports = async (req, res) => {
       timeMax: endTimeUTC.toISOString(),
       singleEvents: true,
       orderBy: "startTime",
-      maxResults: 50, // Adjust as needed
+      maxResults: 50,
     });
 
     const events = response.data.items || [];
@@ -116,12 +116,10 @@ module.exports = async (req, res) => {
     // Format the events
     const formattedMeetings = events.map(formatMeetingData);
 
-    // Group meetings by time for better organization
+    // Group meetings by time
     const meetingsByTime = formattedMeetings.reduce((acc, meeting) => {
       const timeSlot = meeting.startTime;
-      if (!acc[timeSlot]) {
-        acc[timeSlot] = [];
-      }
+      acc[timeSlot] = acc[timeSlot] || [];
       acc[timeSlot].push(meeting);
       return acc;
     }, {});
