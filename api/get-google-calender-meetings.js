@@ -1,7 +1,6 @@
 const { google } = require("googleapis");
 require("dotenv").config();
 const { format, isValid, startOfDay, endOfDay, addDays } = require("date-fns");
-const dateFnsTz = require("date-fns-tz"); // Import the entire module
 const chrono = require("chrono-node");
 
 const oauth2Client = new google.auth.OAuth2(
@@ -37,23 +36,42 @@ const parseDateString = (dateStr) => {
   return format(new Date(), "yyyy-MM-dd");
 };
 
+// Function to get UTC offset in hours for a specific date
+const getUtcOffsetHours = (date) => {
+  // Determine if date is in DST (Pacific Time)
+  const year = date.getFullYear();
+  
+  // DST starts: Second Sunday in March (2 AM)
+  const march = new Date(year, 2, 1, 2);
+  const dstStart = new Date(march);
+  dstStart.setDate(8 - dstStart.getDay()); // First Sunday
+  dstStart.setDate(dstStart.getDate() + 7); // Second Sunday
+  
+  // DST ends: First Sunday in November (2 AM)
+  const november = new Date(year, 10, 1, 2);
+  const dstEnd = new Date(november);
+  dstEnd.setDate(1);
+  while (dstEnd.getDay() !== 0) {
+    dstEnd.setDate(dstEnd.getDate() + 1);
+  }
+
+  return date >= dstStart && date < dstEnd ? -7 : -8;
+};
+
 // Function to format meeting data for response
 const formatMeetingData = (event) => {
   const startDateTime = new Date(event.start.dateTime || event.start.date);
   const endDateTime = new Date(event.end.dateTime || event.end.date);
   
-  // Use the imported module directly
-  const pacificStartTime = dateFnsTz.utcToZonedTime(startDateTime, TIME_ZONE);
-  const pacificEndTime = dateFnsTz.utcToZonedTime(endDateTime, TIME_ZONE);
-
+  // Convert to local time for display
   return {
     id: event.id,
     summary: event.summary || "No Title",
     description: event.description || "",
-    startTime: format(pacificStartTime, "h:mm a"),
-    endTime: format(pacificEndTime, "h:mm a"),
-    startDateTime: pacificStartTime.toISOString(),
-    endDateTime: pacificEndTime.toISOString(),
+    startTime: format(startDateTime, "h:mm a"),
+    endTime: format(endDateTime, "h:mm a"),
+    startDateTime: startDateTime.toISOString(),
+    endDateTime: endDateTime.toISOString(),
     htmlLink: event.htmlLink,
     status: event.status,
     attendees: event.attendees || [],
@@ -67,6 +85,7 @@ module.exports = async (req, res) => {
   }
 
   try {
+    // Support both GET (query params) and POST (body) methods
     const date = req.method === "GET" ? req.query.date : req.body.date;
     
     console.log("Requested date:", date);
@@ -87,28 +106,30 @@ module.exports = async (req, res) => {
       });
     }
 
-    // Create start and end of day in Pacific Time
+    // Create date object and calculate UTC offset
     const dateObj = new Date(parsedDate);
-    const startOfDayPacific = startOfDay(dateObj);
-    const endOfDayPacific = endOfDay(dateObj);
+    const offsetHours = getUtcOffsetHours(dateObj);
     
-    // Use the module directly
-    const startTimeUTC = dateFnsTz.zonedTimeToUtc(startOfDayPacific, TIME_ZONE);
-    const endTimeUTC = dateFnsTz.zonedTimeToUtc(endOfDayPacific, TIME_ZONE);
+    // Calculate UTC times for the entire day in Pacific Time
+    const startOfDayUTC = new Date(dateObj);
+    startOfDayUTC.setHours(offsetHours, 0, 0, 0);
+    
+    const endOfDayUTC = new Date(dateObj);
+    endOfDayUTC.setHours(24 + offsetHours, 59, 59, 999);
 
     console.log("Date range UTC:", {
-      start: startTimeUTC.toISOString(),
-      end: endTimeUTC.toISOString()
+      start: startOfDayUTC.toISOString(),
+      end: endOfDayUTC.toISOString()
     });
 
     // Fetch events from Google Calendar
     const response = await calendar.events.list({
       calendarId: "primary",
-      timeMin: startTimeUTC.toISOString(),
-      timeMax: endTimeUTC.toISOString(),
+      timeMin: startOfDayUTC.toISOString(),
+      timeMax: endOfDayUTC.toISOString(),
       singleEvents: true,
       orderBy: "startTime",
-      maxResults: 50,
+      maxResults: 50, // Adjust as needed
     });
 
     const events = response.data.items || [];
@@ -116,10 +137,12 @@ module.exports = async (req, res) => {
     // Format the events
     const formattedMeetings = events.map(formatMeetingData);
 
-    // Group meetings by time
+    // Group meetings by time for better organization
     const meetingsByTime = formattedMeetings.reduce((acc, meeting) => {
       const timeSlot = meeting.startTime;
-      acc[timeSlot] = acc[timeSlot] || [];
+      if (!acc[timeSlot]) {
+        acc[timeSlot] = [];
+      }
       acc[timeSlot].push(meeting);
       return acc;
     }, {});
